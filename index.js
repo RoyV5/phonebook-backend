@@ -96,7 +96,7 @@ const errorHandler = (error, request, response, next) => {
   const messages = Object.values(error.errors).map(e => e.message)
   response.status(400).json({ errors: messages })
 }else if (error.code === 11000) {
-		return (response.status(409).json({error: 'already exists in phonebook'}))
+		return (response.status(409).json({error: 'Person already exists in phonebook'}))
 	}
 
   next(error)

@@ -17,13 +17,13 @@ const personSchema = new mongoose.Schema({
   name: {
 		type: String,
 		minLength: [3, 'name must be at least 3 characters long'],
-		required: true,
+		required: [true, 'name cannot be empty'],
 		unique: true,
 	},
   number: {
 		type: String,
 		minLength: [8, 'number must be at least 8 characters long'],
-		required: true,
+		required: [true, 'number cannot be empty'],
 		validate: {
 			validator: (num) => {
 			return /^\d{2,3}-\d+$/.test(num)
