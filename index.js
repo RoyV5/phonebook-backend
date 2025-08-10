@@ -1,9 +1,12 @@
-const morgan = require('morgan')
+require('dotenv').config()
 const express = require('express')
-
 const app = express()
-app.use(express.json())
+const Person = require('./models/person')
+const morgan = require('morgan')
+
 app.use(express.static('dist'))
+app.use(express.json())
+
 morgan.token('body', (request, response) => {
 	if (request.method === 'POST') {
 		return JSON.stringify(request.body)
@@ -12,81 +15,71 @@ morgan.token('body', (request, response) => {
 	}
 })
 
-
 app.use(morgan(':method :status :res[content-length] - :response-time ms :body'))
 
-let persons = [
-    { 
-      "id": "1",
-      "name": "Arto Hellas", 
-      "number": "040-123456"
-    },
-    { 
-      "id": "2",
-      "name": "Ada Lovelace", 
-      "number": "39-44-5323523"
-    },
-    { 
-      "id": "3",
-      "name": "Dan Abramov", 
-      "number": "12-43-234345"
-    },
-    { 
-      "id": "4",
-      "name": "Mary Poppendieck", 
-      "number": "39-23-6423122"
-    }
-]
-
 app.get('/api/persons', (request, response) => {
-	response.json(persons)
+	Person.find({}).then(result => {
+		response.json(result)
+	})
 })
 
 app.get('/info', (request, response) => {
-	const amount = persons.length
-	const date = new Date()
-	const message = `<p>Phonebook has info for ${amount} people</p> <p>${date}</p>`
-	response.send(message)
+	Person.find({}).then(result => {
+		const amount = result.length
+		const date = new Date()
+		const message = `<p>Phonebook has info for ${amount} people</p> <p>${date}</p>`
+		response.send(message)
+	})
 })
 
-app.get('/api/persons/:id', (request, response) => {
-	const id = request.params.id
-	const person = persons.find(person => person.id === id)
-	if (person) {
-		console.log(`Sent person object of id ${id}`);
-		response.json(person)
-	} else {
-		console.log(`Error, person with id ${id} not found`);
-		response.status(404).end()
-	}
+app.get('/api/persons/:id', (request, response, next) => {
+	Person.findById(request.params.id).then(result => {
+		if (result) {
+			response.json(result)
+		} else {
+			response.status(404).end()
+		}
+	}).catch(error => next(error))
 })
 
-app.delete('/api/persons/:id', (request, response) => {
-	const id = request.params.id
-	persons = persons.filter(person => person.id !== id)
-	response.status(204).json(persons)
+app.delete('/api/persons/:id', (request, response, next) => {
+	Person.findByIdAndDelete(request.params.id)
+	.then(result => {
+		response.status(204).end()
+	})
+	.catch(error => next(error))
 })
 
-app.post('/api/persons/', (request, response) => {
-	const newId = String(Math.floor(Math.random()*10000))
-	const { name, number } = request.body
-	if (!name || !number) {
-		return response.status(400).json({
-			error: 'Name or number missing'
-		})
-	}
-	if (persons.some(person => person.name === name )) {
-		return response.status(400).json({
-			error: 'name must be unique'
-		})	
-	}
-	const person = {
-		id: newId,
+app.post('/api/persons/', (request, response, next) => {	
+	const body = request.body
+	const {name, number} = body
+	const newPerson = new Person({
 		name: name,
-		number: number
-	}
-	persons = persons.concat(person)
-	response.json(person)
+		number: number,
+	})
+	newPerson.save()
+	.then(person => {
+		response.json(person)
+	})
+	.catch(error => next(error))
+})
+
+app.put('/api/persons/:id', (request, response, next) => {
+	const { name, number } = request.body
+	Person.findById(request.params.id)
+	.then(person => {
+		if (!person) {
+			return response.status(404).end()
+		} else {
+			person.name = name
+			person.number = number
+			person.validateSync()
+			return person.save().then((updatedPerson) => {
+				response.json(updatedPerson)
+			})
+		}
+	})
+	.catch(error => next(error))
 })
 
 const unknownEndpoint = (request, response) => {
@@ -94,6 +87,22 @@ const unknownEndpoint = (request, response) => {
 }
 
 app.use(unknownEndpoint)
+
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message)
+  if (error.name === 'CastError') {
+    return response.status(400).json({ error: 'malformatted id' })
+  } else if (error.name === 'ValidationError') {
+  const messages = Object.values(error.errors).map(e => e.message)
+  response.status(400).json({ errors: messages })
+}else if (error.code === 11000) {
+		return (response.status(409).json({error: 'already exists in phonebook'}))
+	}
+
+  next(error)
+}
+
+app.use(errorHandler) 
 
 const PORT = 3001
 app.listen(PORT, () => {
